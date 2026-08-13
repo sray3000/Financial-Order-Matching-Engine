@@ -8,7 +8,7 @@
 int main() {
     std::cout << "Initializing matching engine for benchmark (" << NUM_ORDERS << " orders)...\n";
 
-    constexpr size_t marketOrderInterval = 10; // 10% market orders
+    constexpr size_t marketOrderCycle = 20;
     
     // Pre-generate orders to eliminate random generation overhead during the measurement loop
     std::vector<Order> orders;
@@ -18,10 +18,14 @@ int main() {
     for (size_t i = 0; i < NUM_ORDERS; ++i) {
         Order o;
         o.orderId = i + 1;
-        // Alternate evenly between buy and sell orders. Every tenth order is a
-        // market order; the rest are limit orders around the base price.
+        // Alternate evenly between buy and sell orders. Two orders per
+        // twenty-order cycle are market orders (one buy and one sell), for a
+        // balanced 10% market-order workload.
         o.side = (i % 2 == 0) ? Side::Buy : Side::Sell;
-        o.type = (i % marketOrderInterval == 0) ? OrderType::Market : OrderType::Limit;
+        const size_t cyclePosition = i % marketOrderCycle;
+        o.type = (cyclePosition == 0 || cyclePosition == 11)
+            ? OrderType::Market
+            : OrderType::Limit;
         o.price = (o.type == OrderType::Market) ? 0 : basePrice + (i % 20) - 10;
         o.quantity = 10;
         o.timestamp = i;
