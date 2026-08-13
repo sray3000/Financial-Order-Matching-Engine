@@ -42,8 +42,9 @@ public:
                 auto bestAskIt = asks.orderBook.begin();
                 uint64_t askPrice = bestAskIt->first;
 
-                // If incoming bid price is less than the lowest ask, no match
-                if (incomingOrder.price < askPrice) {
+                // A limit bid stops below the best ask. A market order has no
+                // price constraint and consumes available asks.
+                if (incomingOrder.type == OrderType::Limit && incomingOrder.price < askPrice) {
                     break;
                 }
 
@@ -76,8 +77,8 @@ public:
                 }
             }
 
-            // If any quantity remains, rest the order on the bid book
-            if (incomingOrder.quantity > 0) {
+            // Only unfilled limit orders may rest on the book.
+            if (incomingOrder.quantity > 0 && incomingOrder.type == OrderType::Limit) {
                 if (!bids.AddOrder(incomingOrder)) {
                     std::cerr << "Order rejected: insufficient pool capacity.\n";
                 }
@@ -89,8 +90,9 @@ public:
                 auto bestBidIt = bids.orderBook.begin();
                 uint64_t bidPrice = bestBidIt->first;
 
-                // If incoming ask price is greater than the highest bid, no match
-                if (incomingOrder.price > bidPrice) {
+                // A limit ask stops above the best bid. A market order has no
+                // price constraint and consumes available bids.
+                if (incomingOrder.type == OrderType::Limit && incomingOrder.price > bidPrice) {
                     break;
                 }
 
@@ -123,8 +125,8 @@ public:
                 }
             }
 
-            // If any quantity remains, rest the order on the ask book
-            if (incomingOrder.quantity > 0) {
+            // Only unfilled limit orders may rest on the book.
+            if (incomingOrder.quantity > 0 && incomingOrder.type == OrderType::Limit) {
                 if (!asks.AddOrder(incomingOrder)) {
                     std::cerr << "Order rejected: insufficient pool capacity.\n";
                 }

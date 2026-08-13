@@ -30,7 +30,7 @@ void TestZeroQuantityOrderRejected() {
     assert(engine.asks.orderBook.empty());
     assert(engine.bids.orderMap.empty());
     assert(engine.asks.orderMap.empty());
-    std::cout << "PASSED\n";
+    std::cout << "PASSED ✅\n";
 }
 
 void TestPoolExhaustionReported() {
@@ -43,7 +43,7 @@ void TestPoolExhaustionReported() {
     assert(engine.bids.orderMap.find(1) != engine.bids.orderMap.end());
     assert(engine.bids.orderMap.find(2) == engine.bids.orderMap.end());
     assert(engine.bids.orderBook.size() == 1);
-    std::cout << "PASSED\n";
+    std::cout << "PASSED ✅\n";
 }
 
 void TestReusableTradeBuffer() {
@@ -59,7 +59,29 @@ void TestReusableTradeBuffer() {
     assert(trades.size() == 1);
     assert(trades[0].makerOrderId == 1);
     assert(trades[0].takerOrderId == 2);
-    std::cout << "PASSED\n";
+    std::cout << "PASSED ✅\n";
+}
+
+void TestMarketOrderDoesNotRest() {
+    std::cout << "Running Test: Market Order Matches and Does Not Rest... ";
+    Engine engine(1000);
+
+    engine.ProcessOrder({1, Side::Sell, 10000, 5, 1000});
+    engine.ProcessOrder({2, Side::Sell, 10100, 5, 1001});
+
+    // The price is ignored for a market order. It consumes all 10 available
+    // units and discards its remaining 2 units rather than resting them.
+    auto trades = engine.ProcessOrder({3, Side::Buy, 0, 12, 1002, OrderType::Market});
+
+    assert(trades.size() == 2);
+    assert(trades[0].price == 10000);
+    assert(trades[0].quantity == 5);
+    assert(trades[1].price == 10100);
+    assert(trades[1].quantity == 5);
+    assert(engine.asks.orderBook.empty());
+    assert(engine.bids.orderBook.empty());
+    assert(engine.bids.orderMap.empty());
+    std::cout << "PASSED ✅\n";
 }
 
 void TestExactMatch() {
@@ -146,6 +168,7 @@ int main() {
     TestZeroQuantityOrderRejected();
     TestPoolExhaustionReported();
     TestReusableTradeBuffer();
+    TestMarketOrderDoesNotRest();
     TestExactMatch();
     TestPartialFillMakerLarger();
     TestMultiLevelCrossing();

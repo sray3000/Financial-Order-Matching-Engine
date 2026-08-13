@@ -98,18 +98,24 @@ int main() {
     std::cout << "    UNIFIED MATCHING ENGINE NODE        \n";
     std::cout << "========================================\n";
     std::cout << "Server daemon running on background thread.\n";
-    std::cout << "Format: [Side (0=Buy, 1=Sell)] [Price in Cents] [Quantity]\n";
-    std::cout << "Example: 1 10500 10  (Sell 10 units @ $105.00)\n";
-    std::cout << "Example: 0 10500 4   (Buy 4 units @ $105.00 - crosses spread)\n\n";
+    std::cout << "Format: [Side (0=Buy, 1=Sell)] [Type (0=Limit, 1=Market)] [Price in Cents] [Quantity]\n";
+    std::cout << "Example: 1 0 10500 10  (Limit sell: 10 units @ $105.00)\n";
+    std::cout << "Example: 0 1 0 4       (Market buy: up to 4 units at available asks)\n\n";
 
     uint64_t local_order_counter = 1;
     int sideInput;
+    int typeInput;
     uint64_t price;
     uint32_t qty;
 
     while (true) {
         std::cout << "Order> ";
-        if (!(std::cin >> sideInput >> price >> qty)) break;
+        if (!(std::cin >> sideInput >> typeInput >> price >> qty)) break;
+
+        if ((sideInput != 0 && sideInput != 1) || (typeInput != 0 && typeInput != 1)) {
+            std::cout << "Invalid side or type.\n";
+            continue;
+        }
 
         auto now = std::chrono::high_resolution_clock::now();
         uint64_t current_timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -122,6 +128,7 @@ int main() {
         ord.price = price;
         ord.quantity = qty;
         ord.timestamp = current_timestamp;
+        ord.type = static_cast<OrderType>(typeInput);
 
         send(sock, &ord, sizeof(Order), 0);
         std::cout << "  [Dispatched] ID: " << ord.orderId << "\n";
