@@ -8,9 +8,6 @@
 int main() {
     std::cout << "Initializing matching engine for benchmark (" << NUM_ORDERS << " orders)...\n";
     
-    // Initialize the engine with enough pool capacity for all benchmark orders
-    Engine engine(NUM_ORDERS + 10000);
-
     // Pre-generate orders to eliminate random generation overhead during the measurement loop
     std::vector<Order> orders;
     orders.reserve(NUM_ORDERS);
@@ -32,10 +29,21 @@ int main() {
     latencies.reserve(NUM_ORDERS);
 
     std::cout << "Running warm-up phase...\n";
-    // Warm-up run to fill instruction caches and branch predictors
+    // Warm up a separate engine so duplicate IDs and warm-up book state cannot
+    // affect the measured workload.
+    Engine warmupEngine(10000);
+    std::vector<TradeEvent> warmupTrades;
+    warmupTrades.reserve(NUM_ORDERS);
     for (size_t i = 0; i < 1000; ++i) {
-        engine.ProcessOrder(orders[i]);
+        warmupEngine.ProcessOrder(orders[i], warmupTrades);
     }
+
+    // Start measurement from a clean book with enough pool capacity.
+    Engine engine(NUM_ORDERS + 10000);
+
+    // Reused output storage keeps result-vector allocation out of every timed call.
+    std::vector<TradeEvent> trades;
+    trades.reserve(NUM_ORDERS);
 
     std::cout << "Starting high-precision measurement loop...\n";
     
@@ -46,7 +54,7 @@ int main() {
         auto start = std::chrono::high_resolution_clock::now();
         
         // Execute the matching engine path
-        engine.ProcessOrder(orders[i]);
+        engine.ProcessOrder(orders[i], trades);
         
         auto end = std::chrono::high_resolution_clock::now();
         

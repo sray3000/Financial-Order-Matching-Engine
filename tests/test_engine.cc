@@ -46,6 +46,22 @@ void TestPoolExhaustionReported() {
     std::cout << "PASSED\n";
 }
 
+void TestReusableTradeBuffer() {
+    std::cout << "Running Test: Reusable Trade Buffer... ";
+    Engine engine(1000);
+    std::vector<TradeEvent> trades;
+    trades.reserve(2);
+
+    engine.ProcessOrder({1, Side::Sell, 10000, 10, 1000}, trades);
+    assert(trades.empty());
+    engine.ProcessOrder({2, Side::Buy, 10000, 10, 1001}, trades);
+
+    assert(trades.size() == 1);
+    assert(trades[0].makerOrderId == 1);
+    assert(trades[0].takerOrderId == 2);
+    std::cout << "PASSED\n";
+}
+
 void TestExactMatch() {
     std::cout << "Running Test: Exact Match (Full Fill)... ";
     Engine engine(1000);
@@ -129,6 +145,7 @@ int main() {
     TestRestingOrders();
     TestZeroQuantityOrderRejected();
     TestPoolExhaustionReported();
+    TestReusableTradeBuffer();
     TestExactMatch();
     TestPartialFillMakerLarger();
     TestMultiLevelCrossing();

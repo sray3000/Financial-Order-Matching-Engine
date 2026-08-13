@@ -26,13 +26,14 @@ public:
     Engine(size_t maxOrders = MAX_ORDERS) 
         : pool(maxOrders), bids(&pool), asks(&pool) {}
 
-    // Process an incoming order and return any resulting trades
-    std::vector<TradeEvent> ProcessOrder(Order incomingOrder) {
-        std::vector<TradeEvent> trades;
+    // Process an incoming order into caller-owned storage. Reusing this buffer
+    // avoids allocating trade-result storage on the matching path.
+    void ProcessOrder(Order incomingOrder, std::vector<TradeEvent>& trades) {
+        trades.clear();
 
         // An order with no executable quantity must never enter the book.
         if (incomingOrder.quantity == 0) {
-            return trades;
+            return;
         }
 
         if (incomingOrder.side == Side::Buy) {
@@ -130,6 +131,12 @@ public:
             }
         }
 
+    }
+
+    // Convenience interface for callers that do not provide reusable storage.
+    std::vector<TradeEvent> ProcessOrder(Order incomingOrder) {
+        std::vector<TradeEvent> trades;
+        ProcessOrder(incomingOrder, trades);
         return trades;
     }
 
