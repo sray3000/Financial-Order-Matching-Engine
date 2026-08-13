@@ -105,14 +105,16 @@ public:
 
     OrderBook(OrderPool* sharedPool) : pool(sharedPool) {}
 
-    void AddOrder(const Order& newOrder) {
+    // Returns false when the shared pool has no capacity for another resting order.
+    [[nodiscard]] bool AddOrder(const Order& newOrder) {
         // Grab a pre-allocated node from the pool instead of using 'new'
         OrderNode* node = pool->Acquire(newOrder);
-        if (!node) return;
+        if (!node) return false;
 
         uint64_t price = newOrder.price;
         orderBook[price].PushBack(node);
         orderMap[newOrder.orderId] = node;
+        return true;
     }
 
     void CancelOrder(uint64_t orderId) {

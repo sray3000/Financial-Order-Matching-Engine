@@ -33,6 +33,19 @@ void TestZeroQuantityOrderRejected() {
     std::cout << "PASSED\n";
 }
 
+void TestPoolExhaustionReported() {
+    std::cout << "Running Test: Pool Exhaustion Reported... ";
+    Engine engine(1);
+
+    assert(engine.bids.AddOrder({1, Side::Buy, 10000, 10, 1000}));
+    assert(!engine.bids.AddOrder({2, Side::Buy, 9900, 10, 1001}));
+    assert(engine.bids.orderMap.size() == 1);
+    assert(engine.bids.orderMap.find(1) != engine.bids.orderMap.end());
+    assert(engine.bids.orderMap.find(2) == engine.bids.orderMap.end());
+    assert(engine.bids.orderBook.size() == 1);
+    std::cout << "PASSED\n";
+}
+
 void TestExactMatch() {
     std::cout << "Running Test: Exact Match (Full Fill)... ";
     Engine engine(1000);
@@ -115,6 +128,7 @@ int main() {
     
     TestRestingOrders();
     TestZeroQuantityOrderRejected();
+    TestPoolExhaustionReported();
     TestExactMatch();
     TestPartialFillMakerLarger();
     TestMultiLevelCrossing();

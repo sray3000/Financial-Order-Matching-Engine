@@ -77,7 +77,9 @@ public:
 
             // If any quantity remains, rest the order on the bid book
             if (incomingOrder.quantity > 0) {
-                bids.AddOrder(incomingOrder);
+                if (!bids.AddOrder(incomingOrder)) {
+                    std::cerr << "Order rejected: insufficient pool capacity.\n";
+                }
             }
 
         } else {
@@ -122,7 +124,9 @@ public:
 
             // If any quantity remains, rest the order on the ask book
             if (incomingOrder.quantity > 0) {
-                asks.AddOrder(incomingOrder);
+                if (!asks.AddOrder(incomingOrder)) {
+                    std::cerr << "Order rejected: insufficient pool capacity.\n";
+                }
             }
         }
 
