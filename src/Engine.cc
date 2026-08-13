@@ -30,6 +30,11 @@ public:
     std::vector<TradeEvent> ProcessOrder(Order incomingOrder) {
         std::vector<TradeEvent> trades;
 
+        // An order with no executable quantity must never enter the book.
+        if (incomingOrder.quantity == 0) {
+            return trades;
+        }
+
         if (incomingOrder.side == Side::Buy) {
             // Match against Asks (lowest ask price first)
             while (incomingOrder.quantity > 0 && !asks.orderBook.empty()) {

@@ -17,6 +17,22 @@ void TestRestingOrders() {
     std::cout << "PASSED ✅\n";
 }
 
+void TestZeroQuantityOrderRejected() {
+    std::cout << "Running Test: Zero-Quantity Order Rejected... ";
+    Engine engine(1000);
+
+    auto buyTrades = engine.ProcessOrder({1, Side::Buy, 10000, 0, 1000});
+    auto sellTrades = engine.ProcessOrder({2, Side::Sell, 10000, 0, 1001});
+
+    assert(buyTrades.empty());
+    assert(sellTrades.empty());
+    assert(engine.bids.orderBook.empty());
+    assert(engine.asks.orderBook.empty());
+    assert(engine.bids.orderMap.empty());
+    assert(engine.asks.orderMap.empty());
+    std::cout << "PASSED\n";
+}
+
 void TestExactMatch() {
     std::cout << "Running Test: Exact Match (Full Fill)... ";
     Engine engine(1000);
@@ -98,6 +114,7 @@ int main() {
     std::cout << "========================================\n";
     
     TestRestingOrders();
+    TestZeroQuantityOrderRejected();
     TestExactMatch();
     TestPartialFillMakerLarger();
     TestMultiLevelCrossing();
