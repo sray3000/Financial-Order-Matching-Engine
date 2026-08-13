@@ -1,1 +1,2 @@
 #define MAX_ORDERS 1000000
+#define NUM_ORDERS 1000000

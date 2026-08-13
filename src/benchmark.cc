@@ -6,7 +6,6 @@
 #include "Engine.cc"
 
 int main() {
-    const size_t NUM_ORDERS = 1000000;
     std::cout << "Initializing matching engine for benchmark (" << NUM_ORDERS << " orders)...\n";
     
     // Initialize the engine with enough pool capacity for all benchmark orders
