@@ -1,10 +1,15 @@
 #pragma once
-#include <string>
+#include <cstdint>
+
+enum class Side : uint8_t {
+    Buy = 0,
+    Sell = 1
+};
 
 struct Order {
-    std::string orderId;
-    bool type;              // 0 for bid, 1 for ask
-    long long price;
-    long long quantity;
-    std::string timestamp;
+    uint64_t orderId;
+    Side side;
+    uint64_t price;     // Store as cents
+    uint32_t quantity;
+    uint64_t timestamp; // Unix nanoseconds
 };
