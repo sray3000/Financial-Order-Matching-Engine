@@ -1,16 +1,22 @@
 # Financial Trade Orders Matching Engine
 
-A compact C++17, single-process financial order matching engine. It maintains a price-time-priority limit order book, accepts limit and market orders, and includes a POSIX TCP demonstration, unit tests, and a synthetic benchmark.
+A compact C++17, single-process financial order matching engine focused on **price-time-priority matching, exchange-style execution semantics, market microstructure analytics, and low-latency in-process benchmarking**.
 
-This is an educational low-latency engine prototype. It is intentionally small and is not an exchange-ready system.
+The project supports limit and market orders, cancellation, partial and multi-level fills, FIFO priority, explicit maker/taker trade events, Level-1/Level-2 order-book analytics, a POSIX TCP demonstration, regression tests, and synthetic performance workloads.
+
+> **Scope:** This is an educational low-latency trading-engine prototype. It is intentionally small and is **not an exchange-ready production system**.
 
 ## What it does
 
 - Matches **limit orders** at the best available opposite-side price, then rests any unfilled quantity on the book.
-- Matches **market orders** against all available opposite-side liquidity and discards any unfilled quantity; market orders never rest.
-- Enforces price priority across price levels and FIFO time priority within the same price level.
+- Matches **market orders** against available opposite-side liquidity and discards any unfilled quantity; market orders never rest.
+- Enforces **price priority** across price levels and **FIFO time priority** within the same price level.
+- Supports partial fills and multi-level matching.
 - Supports cancellation by order ID and side for active resting orders.
 - Uses a fixed-capacity object pool for resting order nodes, avoiding per-order `new` allocation on the normal resting-order path.
+- Produces explicit `TradeEvent` execution reports containing **maker order ID, taker order ID, execution price, and execution quantity**.
+- Exposes top-of-book market metrics including best bid/ask, spread, mid-price, and bid/ask imbalance.
+- Exposes configurable **Level-2 order-book depth snapshots** with aggregate quantity at each price level.
 
 Prices are unsigned integers in cents. For example, `10500` represents `$105.00`.
 
@@ -19,13 +25,16 @@ Prices are unsigned integers in cents. For example, `10500` represents `$105.00`
 | Location | Purpose |
 | --- | --- |
 | `include/Order.h` | `Order`, `Side`, and `OrderType` definitions. |
+| `include/TradeEvent.h` | Maker/taker execution-event definition. |
+| `include/MarketMetrics.h` | Top-of-book market metrics. |
+| `include/OrderBookSnapshot.h` | Level-2 depth snapshot structures. |
 | `include/const.h` | Default capacity and benchmark-order-count constants. |
-| `src/OrderBook.cc` | Object pool, intrusive FIFO list, price level, and `OrderBook`. |
-| `src/Engine.cc` | Matching loop, trade events, and cancellation interface. |
+| `src/OrderBook.cc` | Object pool, intrusive FIFO list, price levels, and `OrderBook`. |
+| `src/Engine.cc` | Matching loop, trade events, cancellation interface, market metrics, and snapshots. |
 | `src/main.cc` | Unified interactive program: local TCP server thread plus local client. |
-| `src/benchmark.cc` | Synthetic core-engine benchmark. |
 | `src/server.cc`, `src/client.cc` | Earlier standalone POSIX examples; not exposed as CMake build targets. |
-| `tests/test_engine.cc` | Core behavior regression tests. |
+| `tests/test_engine.cc` | Core behavior and execution-semantics regression tests. |
+| `benchmarks/benchmark.cc` | Synthetic multi-workload core-engine benchmark. |
 | `CMakeLists.txt` | Build configuration for the unified executable, benchmark, and tests. |
 
 ## Architecture
@@ -37,14 +46,24 @@ Interactive input
 local TCP client ---- raw Order bytes ----> POSIX TCP server thread
                                                 |
                                                 v
-                                           Engine::ProcessOrder
-                                         /                       \
-                                        v                         v
-                              bid book (descending)       ask book (ascending)
-                              highest price first          lowest price first
-                                        \                         /
-                                         v                       v
-                                    TradeEvent results sent to client
+                                          Engine::ProcessOrder
+                                   /                       \
+                                   v                         v
+                            bid book (descending)       ask book (ascending)
+                            highest price first          lowest price first
+                                   \                         /
+                                   v                       v
+                                       TradeEvent results
+                                               |
+                               +---------------+---------------+
+                               |               |               |
+                           maker ID        taker ID       price / quantity
+
+Market-data APIs
+       |
+       +--> MarketMetrics (L1)
+       |
+       +--> OrderBookSnapshot (L2 depth)
 ```
 
 The supported executable is one unified local session: `matching_engine` starts its server thread internally and connects its own interactive client to `127.0.0.1:8080`.
@@ -70,7 +89,18 @@ For an incoming buy:
 4. Continue until the incoming quantity is exhausted, no executable liquidity remains, or (for a limit order) the price no longer crosses.
 5. Rest a remaining limit buy on the bid book. Discard a remaining market-buy quantity.
 
-Incoming sells use the mirrored process against the highest bid. Every trade executes at the resting maker's price and produces a `TradeEvent` containing maker ID, taker ID, price, and quantity.
+Incoming sells use the mirrored process against the highest bid.
+
+Every execution is represented by a `TradeEvent`:
+
+```text
+makerOrderId   = resting order
+ takerOrderId  = incoming order
+price          = resting maker price
+quantity       = executed quantity
+```
+
+One incoming order may generate multiple `TradeEvent`s when it matches across multiple price levels.
 
 ### Interactive order format
 
@@ -90,6 +120,46 @@ Examples:
 ```
 
 The `price` field of a market order is ignored; use `0` for clarity.
+
+## Market microstructure APIs
+
+### Top-of-book metrics
+
+`Engine::GetMarketMetrics()` exposes:
+
+- best bid
+- best ask
+- quantity at best bid
+- quantity at best ask
+- bid-ask spread
+- mid-price
+- top-of-book imbalance
+
+The imbalance is calculated as:
+
+```text
+(bid quantity - ask quantity)
+--------------------------------
+(bid quantity + ask quantity)
+```
+
+with floating-point conversion performed before subtraction to avoid unsigned-integer underflow.
+
+### Level-2 depth snapshots
+
+`Engine::GetSnapshot(depth)` exposes the first `depth` price levels on both sides:
+
+```text
+ASK
+10200 x 100
+10100 x 40
+----------------
+10000 x 30
+ 9900 x 100
+BID
+```
+
+Bids are returned best-to-worse (descending price); asks are returned best-to-worse (ascending price). Multiple orders at the same price are aggregated into a single `BookLevel`.
 
 ## Complexity
 
@@ -132,6 +202,8 @@ cmake --build build -j
 ./build/run_tests
 ```
 
+The regression suite covers matching correctness, price-time priority, partial and multi-level fills, market-order behavior, cancellation/pool behavior, market metrics, Level-2 snapshots, and maker/taker execution semantics.
+
 ### Run the unified interactive engine
 
 ```bash
@@ -146,27 +218,55 @@ Enter orders in the format shown above. The program starts its local server auto
 ./build/matching_benchmark
 ```
 
-## Benchmark workload and sample result
+## Benchmark methodology and results
 
-`matching_benchmark` pre-generates `NUM_ORDERS` (currently 1,000,000) orders before timing. It uses quantity `10`, alternating sides, limit prices around `$100.00`, and a balanced 10% market-order mix (one market buy and one market sell per twenty orders). Warm-up runs on a separate engine, and the measured run starts with a fresh engine. A caller-owned `TradeEvent` buffer is reserved before timing, so result-vector allocation is outside the timed matching path.
+`matching_benchmark` pre-generates 1,000,000 orders per workload before timing, so order generation is outside the measured matching path. It runs a warm-up on a separate engine and uses a fresh engine for each measured workload. A caller-owned `TradeEvent` buffer is reserved before timing, keeping result-vector allocation outside each timed call. Throughput uses a single `steady_clock` interval around the matching loop; latency is measured separately per order and reported as p50, p99, and p99.9. fileciteturn3file0L11-L47
 
-One optimized local run with MSYS2 MinGW `g++ 15.1.0` produced:
+Three synthetic order-flow regimes are benchmarked:
+
+| Workload | Purpose | Observed behavior |
+| --- | --- | --- |
+| **Balanced** | General matching workload with limit orders and a market-order mix | Moderate trade generation and a moderate active book |
+| **Resting-heavy** | Stress persistent resting liquidity and book maintenance | No trades; approximately 1,000,000 active resting orders in the diagnostic run |
+| **Aggressive** | Stress immediate matching and order removal | Approximately 500,000 trades and a minimal active book |
+
+### Representative local run
+
+One final local run produced:
 
 ```text
-Orders processed : 1,000,000
-Elapsed time     : 133 ms
-Throughput       : 7,518,796 orders/sec
-Average latency  : 97.0 ns
-p50              : 100 ns
-p99              : 300 ns
-p99.9            : 1,800 ns
+Workload         Orders/sec       Trades/order       p50       p99       p99.9
+Balanced         25,120,258.84    0.49               53 ns     150 ns    425 ns
+Resting-heavy    21,159,118.52    0.00               39 ns      60 ns    272 ns
+Aggressive       30,143,491.76    0.50               42 ns      82 ns    211 ns
 ```
 
-These numbers are machine- and run-dependent. They measure the in-process matching path for this synthetic workload, and include clock-reading overhead; they do not represent network, serialization, logging, persistence, or multi-user exchange latency. Use repeated runs on an otherwise idle machine to compare changes.
+These are **machine- and run-dependent local measurements**. They measure the in-process matching path for synthetic workloads and do not represent network, serialization, logging, persistence, risk, or production exchange latency. The benchmark should be used primarily for before/after comparisons on the same machine and build configuration rather than as a universal throughput claim.
+
+## Verification
+
+The implementation was also exercised through the interactive executable with the following scenarios:
+
+- resting limit buy
+- resting limit sell
+- exact match
+- partial fill
+- multi-level matching
+- FIFO / price-time priority at the same price
+- market buy across multiple levels
+- market order with insufficient liquidity, confirming that unfilled market quantity does not rest
+
+Representative execution output follows the exchange-style semantics:
+
+```text
+[TRADE EXECUTED] Maker ID: 4 | Taker ID: 7 | Price: $101 | Qty: 60
+[TRADE EXECUTED] Maker ID: 6 | Taker ID: 7 | Price: $102 | Qty: 30
+```
 
 ## Current scope and limitations
 
 - The supported application mode is a single unified local session, not a multi-client exchange service.
-- The engine does not yet implement order amendments, stop orders, iceberg orders, self-trade prevention, persistence, recovery, risk controls, market data feeds, or durable audit logging.
-- The core types are currently included from `.cc` files for simplicity. A production refactor should separate declarations into headers and compile implementation units normally.
+- The engine does not implement order amendments, stop orders, iceberg orders, self-trade prevention, persistence, recovery, risk controls, external market-data feeds, or durable audit logging.
+- Price-level aggregate liquidity is currently derived from the resting-order structure rather than maintained as a dedicated `O(1)` quantity field; this was intentionally left as future optimization work.
 - The raw TCP protocol should be replaced with an explicit, versioned, endian-safe framed protocol before communicating across processes or hosts.
+- Benchmark latency is in-process matching latency and includes timestamping overhead; it is not end-to-end exchange latency.
