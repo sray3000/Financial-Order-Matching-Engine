@@ -112,3 +112,61 @@ void Engine::CancelOrder(uint64_t orderId, Side side) {
     else
       asks.CancelOrder(orderId);
 }
+
+MarketMetrics Engine::GetMarketMetrics() const {
+    MarketMetrics metrics;
+
+    // Best bid
+    if (!bids.orderBook.empty()) {
+        metrics.hasBid = true;
+
+        auto bidIt = bids.orderBook.begin();
+        metrics.bestBid = bidIt->first;
+
+        const PriceLevel& level = bidIt->second;
+
+        for (OrderNode* node = level.head;
+             node != nullptr;
+             node = node->next) {
+            metrics.bidQuantity += node->order.quantity;
+        }
+    }
+
+    // Best ask
+    if (!asks.orderBook.empty()) {
+        metrics.hasAsk = true;
+
+        auto askIt = asks.orderBook.begin();
+        metrics.bestAsk = askIt->first;
+
+        const PriceLevel& level = askIt->second;
+
+        for (OrderNode* node = level.head;
+             node != nullptr;
+             node = node->next) {
+            metrics.askQuantity += node->order.quantity;
+        }
+    }
+
+    // Spread and mid-price only make sense when both sides exist.
+    if (metrics.hasBid && metrics.hasAsk) {
+        metrics.spread = metrics.bestAsk - metrics.bestBid;
+
+        metrics.midPrice =
+            (static_cast<double>(metrics.bestBid) +
+             static_cast<double>(metrics.bestAsk)) / 2.0;
+    }
+
+    // Top-of-book imbalance.
+    const uint64_t totalQuantity =
+        metrics.bidQuantity + metrics.askQuantity;
+
+    if (totalQuantity > 0) {
+        metrics.imbalance =
+            (static_cast<double>(metrics.bidQuantity) -
+            static_cast<double>(metrics.askQuantity))
+            / static_cast<double>(totalQuantity);
+    }
+
+    return metrics;
+}

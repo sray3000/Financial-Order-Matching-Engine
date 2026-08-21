@@ -1,8 +1,13 @@
 #include <iostream>
 #include <cassert>
 #include <vector>
+#include <cmath>
 
 #include "Engine.h"
+
+bool NearlyEqual(double a, double b, double epsilon = 1e-12) {
+    return std::abs(a - b) < epsilon;
+}
 
 void TestRestingOrders() {
     std::cout << "Running Test: Resting Orders (No Match)... ";
@@ -487,6 +492,252 @@ void TestPriceTimePriority() {
     std::cout << "PASSED ✅\n";
 }
 
+void TestMarketMetricsEmptyBook() {
+    std::cout << "Running Test: Market metrics of empty book... ";
+    Engine engine(10);
+
+    MarketMetrics metrics = engine.GetMarketMetrics();
+
+    assert(!metrics.hasBid);
+    assert(!metrics.hasAsk);
+
+    assert(metrics.bestBid == 0);
+    assert(metrics.bestAsk == 0);
+
+    assert(metrics.bidQuantity == 0);
+    assert(metrics.askQuantity == 0);
+
+    assert(metrics.spread == 0);
+    assert(metrics.midPrice == 0.0);
+    assert(metrics.imbalance == 0.0);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestMarketMetricsOneSidedBook() {
+    std::cout << "Running Test: Market metrics of one-sided book... ";
+    Engine engine(10);
+
+    Order bid{
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(bid));
+
+    MarketMetrics metrics = engine.GetMarketMetrics();
+
+    assert(metrics.hasBid);
+    assert(!metrics.hasAsk);
+
+    assert(metrics.bestBid == 10000);
+    assert(metrics.bidQuantity == 30);
+
+    assert(metrics.bestAsk == 0);
+    assert(metrics.askQuantity == 0);
+
+    // Spread and mid-price require both sides.
+    assert(metrics.spread == 0);
+    assert(metrics.midPrice == 0.0);
+
+    // Entire top-of-book quantity is on the bid.
+    assert(NearlyEqual(metrics.imbalance, 1.0));
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestMarketMetricsBestBidAsk() {
+    std::cout << "Running Test: Market metrics of best bid-ask... ";
+    Engine engine(20);
+
+    Order bid1{
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    };
+
+    Order bid2{
+        1002,
+        Side::Buy,
+        9900,
+        100,
+        2,
+        OrderType::Limit
+    };
+
+    Order ask1{
+        2001,
+        Side::Sell,
+        10100,
+        40,
+        3,
+        OrderType::Limit
+    };
+
+    Order ask2{
+        2002,
+        Side::Sell,
+        10200,
+        100,
+        4,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(bid1));
+    assert(engine.bids.AddOrder(bid2));
+
+    assert(engine.asks.AddOrder(ask1));
+    assert(engine.asks.AddOrder(ask2));
+
+    MarketMetrics metrics = engine.GetMarketMetrics();
+
+    assert(metrics.hasBid);
+    assert(metrics.hasAsk);
+
+    // Best prices.
+    assert(metrics.bestBid == 10000);
+    assert(metrics.bestAsk == 10100);
+
+    // Quantity at best prices only.
+    assert(metrics.bidQuantity == 30);
+    assert(metrics.askQuantity == 40);
+
+    // 10100 - 10000 = 100 cents.
+    assert(metrics.spread == 100);
+
+    // (10000 + 10100) / 2 = 10050.
+    assert(NearlyEqual(metrics.midPrice, 10050.0));
+
+    // (30 - 40) / (30 + 40)
+    assert(NearlyEqual(metrics.imbalance, static_cast<double>(-10) / 70.0));
+    
+    std::cout << "PASSED ✅\n";
+}
+
+void TestMarketMetricsAggregatesBestLevel() {
+    std::cout << "Running Test: Market metrics of multiple orders aggregate... ";
+    Engine engine(20);
+
+    Order bid1{
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    };
+
+    Order bid2{
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order bid3{
+        1003,
+        Side::Buy,
+        9900,
+        100,
+        3,
+        OrderType::Limit
+    };
+
+    Order ask1{
+        2001,
+        Side::Sell,
+        10100,
+        50,
+        4,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(bid1));
+    assert(engine.bids.AddOrder(bid2));
+    assert(engine.bids.AddOrder(bid3));
+    assert(engine.asks.AddOrder(ask1));
+
+    MarketMetrics metrics = engine.GetMarketMetrics();
+
+    assert(metrics.bestBid == 10000);
+
+    // 30 + 20 at the best bid.
+    assert(metrics.bidQuantity == 50);
+
+    assert(metrics.bestAsk == 10100);
+    assert(metrics.askQuantity == 50);
+
+    assert(metrics.spread == 100);
+    assert(metrics.midPrice == 10050.0);
+
+    // Equal quantities -> balanced book.
+    assert(NearlyEqual(metrics.imbalance, 0.0));
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestMarketMetricsAfterCancellation() {
+    std::cout << "Running Test: Market metrics after cancellation... ";
+    Engine engine(10);
+
+    Order bid1{
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    };
+
+    Order bid2{
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order ask{
+        2001,
+        Side::Sell,
+        10100,
+        40,
+        3,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(bid1));
+    assert(engine.bids.AddOrder(bid2));
+    assert(engine.asks.AddOrder(ask));
+
+    MarketMetrics before = engine.GetMarketMetrics();
+
+    assert(before.bidQuantity == 50);
+    assert(before.askQuantity == 40);
+
+    engine.CancelOrder(1001, Side::Buy);
+
+    MarketMetrics after = engine.GetMarketMetrics();
+
+    assert(after.bestBid == 10000);
+    assert(after.bidQuantity == 20);
+
+    assert(after.bestAsk == 10100);
+    assert(after.askQuantity == 40);
+
+    std::cout << "PASSED ✅\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "    MATCHING ENGINE UNIT TEST SUITE     \n";
@@ -508,6 +759,11 @@ int main() {
     TestPartialFillMakerLarger();
     TestMultiLevelCrossing();
     TestPriceTimePriority();
+    TestMarketMetricsEmptyBook();
+    TestMarketMetricsOneSidedBook();
+    TestMarketMetricsBestBidAsk();
+    TestMarketMetricsAggregatesBestLevel();
+    TestMarketMetricsAfterCancellation();
 
     std::cout << "\nALL UNIT TESTS PASSED SUCCESSFULLY! 🎉\n";
     std::cout << "========================================\n";
