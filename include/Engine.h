@@ -9,6 +9,7 @@
 #include "TradeEvent.h"
 #include "const.h"
 #include "MarketMetrics.h"
+#include "OrderBookSnapshot.h"
 
 class Engine {
 private:
@@ -23,4 +24,5 @@ public:
     std::vector<TradeEvent> ProcessOrder(Order);
     void CancelOrder(uint64_t, Side);
     MarketMetrics GetMarketMetrics() const;
+    OrderBookSnapshot GetSnapshot(size_t) const;
 };

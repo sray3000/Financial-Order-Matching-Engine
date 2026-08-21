@@ -738,6 +738,319 @@ void TestMarketMetricsAfterCancellation() {
     std::cout << "PASSED ✅\n";
 }
 
+void TestEmptyOrderBookSnapshot() {
+    std::cout << "Running Test: Empty order book snapshot... ";
+    Engine engine(20);
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(5);
+
+    assert(snapshot.bids.empty());
+    assert(snapshot.asks.empty());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestOrderBookSnapshotDepth() {
+    std::cout << "Running Test: Order book snapshot depth... ";
+    Engine engine(20);
+
+    // Bids
+    Order bid1{
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    };
+
+    Order bid2{
+        1002,
+        Side::Buy,
+        9900,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order bid3{
+        1003,
+        Side::Buy,
+        9800,
+        40,
+        3,
+        OrderType::Limit
+    };
+
+    // Asks
+    Order ask1{
+        2001,
+        Side::Sell,
+        10100,
+        50,
+        4,
+        OrderType::Limit
+    };
+
+    Order ask2{
+        2002,
+        Side::Sell,
+        10200,
+        60,
+        5,
+        OrderType::Limit
+    };
+
+    Order ask3{
+        2003,
+        Side::Sell,
+        10300,
+        70,
+        6,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(bid1));
+    assert(engine.bids.AddOrder(bid2));
+    assert(engine.bids.AddOrder(bid3));
+
+    assert(engine.asks.AddOrder(ask1));
+    assert(engine.asks.AddOrder(ask2));
+    assert(engine.asks.AddOrder(ask3));
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(3);
+
+    assert(snapshot.bids.size() == 3);
+    assert(snapshot.asks.size() == 3);
+
+    // Bids: highest price first.
+    assert(snapshot.bids[0].price == 10000);
+    assert(snapshot.bids[0].quantity == 30);
+
+    assert(snapshot.bids[1].price == 9900);
+    assert(snapshot.bids[1].quantity == 20);
+
+    assert(snapshot.bids[2].price == 9800);
+    assert(snapshot.bids[2].quantity == 40);
+
+    // Asks: lowest price first.
+    assert(snapshot.asks[0].price == 10100);
+    assert(snapshot.asks[0].quantity == 50);
+
+    assert(snapshot.asks[1].price == 10200);
+    assert(snapshot.asks[1].quantity == 60);
+
+    assert(snapshot.asks[2].price == 10300);
+    assert(snapshot.asks[2].quantity == 70);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestOrderBookSnapshotLimitedDepth() {
+    std::cout << "Running Test: Order book snapshot limited depth... ";
+    Engine engine(20);
+
+    assert(engine.bids.AddOrder({
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1002,
+        Side::Buy,
+        9900,
+        20,
+        2,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1003,
+        Side::Buy,
+        9800,
+        30,
+        3,
+        OrderType::Limit
+    }));
+
+    assert(engine.asks.AddOrder({
+        2001,
+        Side::Sell,
+        10100,
+        40,
+        4,
+        OrderType::Limit
+    }));
+
+    assert(engine.asks.AddOrder({
+        2002,
+        Side::Sell,
+        10200,
+        50,
+        5,
+        OrderType::Limit
+    }));
+
+    assert(engine.asks.AddOrder({
+        2003,
+        Side::Sell,
+        10300,
+        60,
+        6,
+        OrderType::Limit
+    }));
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(2);
+
+    assert(snapshot.bids.size() == 2);
+    assert(snapshot.asks.size() == 2);
+
+    assert(snapshot.bids[0].price == 10000);
+    assert(snapshot.bids[1].price == 9900);
+
+    assert(snapshot.asks[0].price == 10100);
+    assert(snapshot.asks[1].price == 10200);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestOrderBookSnapshotAggregatesPriceLevel() {
+    std::cout << "Running Test: Order book snapshot aggregate price level... ";
+    Engine engine(20);
+
+    assert(engine.bids.AddOrder({
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1003,
+        Side::Buy,
+        9900,
+        100,
+        3,
+        OrderType::Limit
+    }));
+
+    assert(engine.asks.AddOrder({
+        2001,
+        Side::Sell,
+        10100,
+        40,
+        4,
+        OrderType::Limit
+    }));
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(2);
+
+    assert(snapshot.bids.size() == 2);
+
+    assert(snapshot.bids[0].price == 10000);
+    assert(snapshot.bids[0].quantity == 50);
+
+    assert(snapshot.bids[1].price == 9900);
+    assert(snapshot.bids[1].quantity == 100);
+
+    assert(snapshot.asks.size() == 1);
+    assert(snapshot.asks[0].price == 10100);
+    assert(snapshot.asks[0].quantity == 40);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestOrderBookSnapshotZeroDepth() {
+    std::cout << "Running Test: Order book snapshot zero depth... ";
+    Engine engine(10);
+
+    assert(engine.bids.AddOrder({
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    }));
+
+    assert(engine.asks.AddOrder({
+        2001,
+        Side::Sell,
+        10100,
+        10,
+        2,
+        OrderType::Limit
+    }));
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(0);
+
+    assert(snapshot.bids.empty());
+    assert(snapshot.asks.empty());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestOrderBookSnapshotAfterCancellation() {
+    std::cout << "Running Test: Order book snapshot after cancellation... ";
+    Engine engine(20);
+
+    assert(engine.bids.AddOrder({
+        1001,
+        Side::Buy,
+        10000,
+        30,
+        1,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    }));
+
+    assert(engine.bids.AddOrder({
+        1003,
+        Side::Buy,
+        9900,
+        100,
+        3,
+        OrderType::Limit
+    }));
+
+    engine.bids.CancelOrder(1001);
+
+    OrderBookSnapshot snapshot = engine.GetSnapshot(2);
+
+    assert(snapshot.bids.size() == 2);
+
+    assert(snapshot.bids[0].price == 10000);
+    assert(snapshot.bids[0].quantity == 20);
+
+    assert(snapshot.bids[1].price == 9900);
+    assert(snapshot.bids[1].quantity == 100);
+
+    std::cout << "PASSED ✅\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "    MATCHING ENGINE UNIT TEST SUITE     \n";
@@ -764,6 +1077,12 @@ int main() {
     TestMarketMetricsBestBidAsk();
     TestMarketMetricsAggregatesBestLevel();
     TestMarketMetricsAfterCancellation();
+    TestEmptyOrderBookSnapshot();
+    TestOrderBookSnapshotDepth();
+    TestOrderBookSnapshotLimitedDepth();
+    TestOrderBookSnapshotAggregatesPriceLevel();
+    TestOrderBookSnapshotZeroDepth();
+    TestOrderBookSnapshotAfterCancellation();
 
     std::cout << "\nALL UNIT TESTS PASSED SUCCESSFULLY! 🎉\n";
     std::cout << "========================================\n";

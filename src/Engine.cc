@@ -170,3 +170,64 @@ MarketMetrics Engine::GetMarketMetrics() const {
 
     return metrics;
 }
+
+OrderBookSnapshot Engine::GetSnapshot(size_t depth) const {
+    OrderBookSnapshot snapshot;
+
+    if (depth == 0) {
+        return snapshot;
+    }
+
+    snapshot.bids.reserve(depth);
+    snapshot.asks.reserve(depth);
+
+    // Bids are stored in descending price order.
+    size_t count = 0;
+
+    for (auto it = bids.orderBook.begin();
+         it != bids.orderBook.end() && count < depth;
+         ++it, ++count) {
+
+        const uint64_t price = it->first;
+        const PriceLevel& level = it->second;
+
+        uint64_t quantity = 0;
+
+        for (OrderNode* node = level.head;
+             node != nullptr;
+             node = node->next) {
+            quantity += node->order.quantity;
+        }
+
+        snapshot.bids.push_back({
+            price,
+            quantity
+        });
+    }
+
+    // Asks are stored in ascending price order.
+    count = 0;
+
+    for (auto it = asks.orderBook.begin();
+         it != asks.orderBook.end() && count < depth;
+         ++it, ++count) {
+
+        const uint64_t price = it->first;
+        const PriceLevel& level = it->second;
+
+        uint64_t quantity = 0;
+
+        for (OrderNode* node = level.head;
+             node != nullptr;
+             node = node->next) {
+            quantity += node->order.quantity;
+        }
+
+        snapshot.asks.push_back({
+            price,
+            quantity
+        });
+    }
+
+    return snapshot;
+}
