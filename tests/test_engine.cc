@@ -1051,6 +1051,256 @@ void TestOrderBookSnapshotAfterCancellation() {
     std::cout << "PASSED ✅\n";
 }
 
+void TestTradeEventMakerTakerSemantics() {
+    std::cout << "Running Test: Trade event semantics... ";
+    Engine engine(10);
+
+    Order maker{
+        1001,
+        Side::Sell,
+        10100,
+        100,
+        1,
+        OrderType::Limit
+    };
+
+    Order taker{
+        2001,
+        Side::Buy,
+        10100,
+        40,
+        2,
+        OrderType::Limit
+    };
+
+    std::vector<TradeEvent> trades;
+
+    engine.ProcessOrder(maker, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(taker, trades);
+
+    assert(trades.size() == 1);
+
+    const TradeEvent& trade = trades[0];
+
+    assert(trade.makerOrderId == 1001);
+    assert(trade.takerOrderId == 2001);
+    assert(trade.price == 10100);
+    assert(trade.quantity == 40);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestTradeEventPartialFill() {
+    std::cout << "Running Test: Trade event partial fill... ";
+    Engine engine(10);
+
+    Order maker{
+        1001,
+        Side::Sell,
+        10100,
+        100,
+        1,
+        OrderType::Limit
+    };
+
+    Order taker{
+        2001,
+        Side::Buy,
+        10100,
+        40,
+        2,
+        OrderType::Limit
+    };
+
+    std::vector<TradeEvent> trades;
+
+    engine.ProcessOrder(maker, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(taker, trades);
+
+    assert(trades.size() == 1);
+
+    assert(trades[0].makerOrderId == 1001);
+    assert(trades[0].takerOrderId == 2001);
+    assert(trades[0].price == 10100);
+    assert(trades[0].quantity == 40);
+
+    // Maker should have 60 remaining.
+    auto it = engine.asks.orderMap.find(1001);
+
+    assert(it != engine.asks.orderMap.end());
+    assert(it->second->order.quantity == 60);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestTradeEventMultiLevelMatch() {
+    std::cout << "Running Test: Trade event multi-level match... ";
+    Engine engine(10);
+
+    Order maker1{
+        1001,
+        Side::Sell,
+        10100,
+        100,
+        1,
+        OrderType::Limit
+    };
+
+    Order maker2{
+        1002,
+        Side::Sell,
+        10200,
+        50,
+        2,
+        OrderType::Limit
+    };
+
+    Order taker{
+        2001,
+        Side::Buy,
+        10200,
+        150,
+        3,
+        OrderType::Limit
+    };
+
+    std::vector<TradeEvent> trades;
+
+    engine.ProcessOrder(maker1, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(maker2, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(taker, trades);
+
+    assert(trades.size() == 2);
+
+    // First execution: best ask.
+    assert(trades[0].makerOrderId == 1001);
+    assert(trades[0].takerOrderId == 2001);
+    assert(trades[0].price == 10100);
+    assert(trades[0].quantity == 100);
+
+    // Second execution: next price level.
+    assert(trades[1].makerOrderId == 1002);
+    assert(trades[1].takerOrderId == 2001);
+    assert(trades[1].price == 10200);
+    assert(trades[1].quantity == 50);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestTradeEventFIFOMakerPriority() {
+    std::cout << "Running Test: Trade event FIFO scheduling... ";
+    Engine engine(10);
+
+    Order maker1{
+        1001,
+        Side::Sell,
+        10100,
+        40,
+        1,
+        OrderType::Limit
+    };
+
+    Order maker2{
+        1002,
+        Side::Sell,
+        10100,
+        40,
+        2,
+        OrderType::Limit
+    };
+
+    Order taker{
+        2001,
+        Side::Buy,
+        10100,
+        50,
+        3,
+        OrderType::Limit
+    };
+
+    std::vector<TradeEvent> trades;
+
+    engine.ProcessOrder(maker1, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(maker2, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(taker, trades);
+
+    assert(trades.size() == 2);
+
+    // Earlier maker gets filled first.
+    assert(trades[0].makerOrderId == 1001);
+    assert(trades[0].quantity == 40);
+
+    // Remaining quantity goes to second maker.
+    assert(trades[1].makerOrderId == 1002);
+    assert(trades[1].quantity == 10);
+
+    assert(trades[0].takerOrderId == 2001);
+    assert(trades[1].takerOrderId == 2001);
+
+    assert(trades[0].price == 10100);
+    assert(trades[1].price == 10100);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestTradeEventSellTaker() {
+    std::cout << "Running Test: Trade event reverse semantics... ";
+    Engine engine(10);
+
+    Order maker{
+        1001,
+        Side::Buy,
+        10000,
+        100,
+        1,
+        OrderType::Limit
+    };
+
+    Order taker{
+        2001,
+        Side::Sell,
+        10000,
+        40,
+        2,
+        OrderType::Limit
+    };
+
+    std::vector<TradeEvent> trades;
+
+    engine.ProcessOrder(maker, trades);
+
+    trades.clear();
+
+    engine.ProcessOrder(taker, trades);
+
+    assert(trades.size() == 1);
+
+    assert(trades[0].makerOrderId == 1001);
+    assert(trades[0].takerOrderId == 2001);
+    assert(trades[0].price == 10000);
+    assert(trades[0].quantity == 40);
+
+    std::cout << "PASSED ✅\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "    MATCHING ENGINE UNIT TEST SUITE     \n";
@@ -1083,6 +1333,11 @@ int main() {
     TestOrderBookSnapshotAggregatesPriceLevel();
     TestOrderBookSnapshotZeroDepth();
     TestOrderBookSnapshotAfterCancellation();
+    TestTradeEventMakerTakerSemantics();
+    TestTradeEventPartialFill();
+    TestTradeEventMultiLevelMatch();
+    TestTradeEventFIFOMakerPriority();
+    TestTradeEventSellTaker();
 
     std::cout << "\nALL UNIT TESTS PASSED SUCCESSFULLY! 🎉\n";
     std::cout << "========================================\n";
