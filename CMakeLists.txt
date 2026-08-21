@@ -27,7 +27,7 @@ target_link_libraries(matching_engine PRIVATE
 
 # Benchmark
 add_executable(matching_benchmark
-    src/benchmark.cc
+    benchmarks/benchmark.cc
 )
 
 target_link_libraries(matching_benchmark PRIVATE
