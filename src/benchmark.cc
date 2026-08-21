@@ -3,7 +3,7 @@
 #include <chrono>
 #include <algorithm>
 #include <numeric>
-#include "Engine.cc"
+#include "Engine.h"
 
 int main() {
     std::cout << "Initializing matching engine for benchmark (" << NUM_ORDERS << " orders)...\n";

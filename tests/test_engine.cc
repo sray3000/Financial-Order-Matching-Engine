@@ -1,7 +1,8 @@
 #include <iostream>
 #include <cassert>
 #include <vector>
-#include "Engine.cc"
+
+#include "Engine.h"
 
 void TestRestingOrders() {
     std::cout << "Running Test: Resting Orders (No Match)... ";
@@ -43,6 +44,333 @@ void TestPoolExhaustionReported() {
     assert(engine.bids.orderMap.find(1) != engine.bids.orderMap.end());
     assert(engine.bids.orderMap.find(2) == engine.bids.orderMap.end());
     assert(engine.bids.orderBook.size() == 1);
+    std::cout << "PASSED ✅\n";
+}
+
+void TestDuplicateOrderIdRejected() {
+    std::cout << "Running Test: Duplicate Order ID rejected... ";
+
+    Engine engine(10);
+
+    Order first{
+        1001,          // orderId
+        Side::Buy,
+        10000,         // price
+        10,            // quantity
+        1,             // timestamp
+        OrderType::Limit
+    };
+
+    Order duplicate{
+        1001,          // SAME orderId
+        Side::Buy,
+        10100,         // different price
+        20,            // different quantity
+        2,             // later timestamp
+        OrderType::Limit
+    };
+
+    // First order should be accepted.
+    assert(engine.bids.AddOrder(first));
+
+    // Duplicate active order ID must be rejected.
+    assert(!engine.bids.AddOrder(duplicate));
+
+    // The original order must still be the active order.
+    auto it = engine.bids.orderMap.find(1001);
+    assert(it != engine.bids.orderMap.end());
+
+    OrderNode* node = it->second;
+
+    assert(node->order.orderId == 1001);
+    assert(node->order.price == 10000);
+    assert(node->order.quantity == 10);
+
+    // Duplicate must not create another price level.
+    assert(engine.bids.orderBook.size() == 1);
+    assert(engine.bids.orderBook.find(10000) != engine.bids.orderBook.end());
+    assert(engine.bids.orderBook.find(10100) == engine.bids.orderBook.end());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestCancelOnlyOrder() {
+    std::cout << "Running Test: One order cancelled... ";
+
+    Engine engine(10);
+
+    Order order{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(order));
+
+    assert(engine.bids.orderMap.size() == 1);
+    assert(engine.bids.orderBook.size() == 1);
+
+    engine.bids.CancelOrder(1001);
+
+    // Order must disappear from the ID map.
+    assert(engine.bids.orderMap.empty());
+
+    // Empty price level must also disappear.
+    assert(engine.bids.orderBook.empty());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestCancelHeadOrder() {
+    std::cout << "Running Test: Order at head cancelled... ";
+
+    Engine engine(10);
+
+    Order first{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    Order second{
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order third{
+        1003,
+        Side::Buy,
+        10000,
+        30,
+        3,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(first));
+    assert(engine.bids.AddOrder(second));
+    assert(engine.bids.AddOrder(third));
+
+    engine.bids.CancelOrder(1001);
+
+    auto levelIt = engine.bids.orderBook.find(10000);
+    assert(levelIt != engine.bids.orderBook.end());
+
+    PriceLevel& level = levelIt->second;
+
+    assert(level.head != nullptr);
+    assert(level.tail != nullptr);
+
+    // Second order must now be the oldest.
+    assert(level.head->order.orderId == 1002);
+    assert(level.tail->order.orderId == 1003);
+
+    // First order must no longer exist.
+    assert(engine.bids.orderMap.find(1001) ==
+           engine.bids.orderMap.end());
+
+    // Remaining orders must still exist.
+    assert(engine.bids.orderMap.find(1002) !=
+           engine.bids.orderMap.end());
+
+    assert(engine.bids.orderMap.find(1003) !=
+           engine.bids.orderMap.end());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestCancelMiddleOrder() {
+    std::cout << "Running Test: Order in the middle cancelled... ";
+
+    Engine engine(10);
+
+    Order first{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    Order second{
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order third{
+        1003,
+        Side::Buy,
+        10000,
+        30,
+        3,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(first));
+    assert(engine.bids.AddOrder(second));
+    assert(engine.bids.AddOrder(third));
+
+    engine.bids.CancelOrder(1002);
+
+    auto levelIt = engine.bids.orderBook.find(10000);
+    assert(levelIt != engine.bids.orderBook.end());
+
+    PriceLevel& level = levelIt->second;
+
+    assert(level.head->order.orderId == 1001);
+    assert(level.tail->order.orderId == 1003);
+
+    // Verify the links were correctly repaired.
+    assert(level.head->next == level.tail);
+    assert(level.tail->prev == level.head);
+
+    assert(engine.bids.orderMap.find(1002) ==
+           engine.bids.orderMap.end());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestCancelTailOrder() {
+    std::cout << "Running Test: Order at tail cancelled... ";
+
+    Engine engine(10);
+
+    Order first{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    Order second{
+        1002,
+        Side::Buy,
+        10000,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    Order third{
+        1003,
+        Side::Buy,
+        10000,
+        30,
+        3,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(first));
+    assert(engine.bids.AddOrder(second));
+    assert(engine.bids.AddOrder(third));
+
+    engine.bids.CancelOrder(1003);
+
+    auto levelIt = engine.bids.orderBook.find(10000);
+    assert(levelIt != engine.bids.orderBook.end());
+
+    PriceLevel& level = levelIt->second;
+
+    assert(level.head->order.orderId == 1001);
+    assert(level.tail->order.orderId == 1002);
+
+    assert(level.tail->next == nullptr);
+
+    assert(engine.bids.orderMap.find(1003) ==
+           engine.bids.orderMap.end());
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestCancelUnknownOrder() {
+    std::cout << "Running Test: Unknown order cancelled... ";
+
+    Engine engine(10);
+
+    Order order{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    assert(engine.bids.AddOrder(order));
+
+    // Should do nothing and should not corrupt the book.
+    engine.bids.CancelOrder(9999);
+
+    assert(engine.bids.orderMap.size() == 1);
+    assert(engine.bids.orderBook.size() == 1);
+
+    auto it = engine.bids.orderMap.find(1001);
+    assert(it != engine.bids.orderMap.end());
+
+    assert(it->second->order.orderId == 1001);
+
+    std::cout << "PASSED ✅\n";
+}
+
+void TestPoolReuseAfterCancellation() {
+    std::cout << "Running Test: Pool reuse after cancellation... ";
+
+    Engine engine(1);
+
+    Order first{
+        1001,
+        Side::Buy,
+        10000,
+        10,
+        1,
+        OrderType::Limit
+    };
+
+    Order second{
+        1002,
+        Side::Buy,
+        10100,
+        20,
+        2,
+        OrderType::Limit
+    };
+
+    // Consume the only pool slot.
+    assert(engine.bids.AddOrder(first));
+
+    // Pool should now be exhausted.
+    assert(!engine.bids.AddOrder(second));
+
+    // Cancellation must return the node to the pool.
+    engine.bids.CancelOrder(1001);
+
+    // The pool slot should now be reusable.
+    assert(engine.bids.AddOrder(second));
+
+    assert(engine.bids.orderMap.size() == 1);
+
+    auto it = engine.bids.orderMap.find(1002);
+    assert(it != engine.bids.orderMap.end());
+
+    assert(it->second->order.orderId == 1002);
+    assert(it->second->order.price == 10100);
+
     std::cout << "PASSED ✅\n";
 }
 
@@ -167,6 +495,13 @@ int main() {
     TestRestingOrders();
     TestZeroQuantityOrderRejected();
     TestPoolExhaustionReported();
+    TestDuplicateOrderIdRejected();
+    TestCancelOnlyOrder();
+    TestCancelHeadOrder();
+    TestCancelMiddleOrder();
+    TestCancelTailOrder();
+    TestCancelUnknownOrder();
+    TestPoolReuseAfterCancellation();
     TestReusableTradeBuffer();
     TestMarketOrderDoesNotRest();
     TestExactMatch();

@@ -7,7 +7,8 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
-#include "Engine.cc" // Brings in your matching engine logic
+
+#include "Engine.h"
 
 // --- BACKGROUND SERVER THREAD ---
 void RunServerDaemon() {

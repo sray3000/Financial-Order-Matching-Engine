@@ -6,7 +6,8 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <netinet/in.h>
-#include "Engine.cc"
+
+#include "Engine.h"
 
 #define PORT 8080
 #define MAX_EVENTS 64
